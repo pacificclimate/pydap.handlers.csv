@@ -1,0 +1,3 @@
+[console_scripts]
+pydap.handlers.csv = pydap.handlers.csv:main
+

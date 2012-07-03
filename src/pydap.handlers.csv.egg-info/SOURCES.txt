@@ -1,0 +1,14 @@
+MANIFEST.in
+NEWS.txt
+README.rst
+setup.py
+src/pydap/__init__.py
+src/pydap.handlers.csv.egg-info/PKG-INFO
+src/pydap.handlers.csv.egg-info/SOURCES.txt
+src/pydap.handlers.csv.egg-info/dependency_links.txt
+src/pydap.handlers.csv.egg-info/entry_points.txt
+src/pydap.handlers.csv.egg-info/namespace_packages.txt
+src/pydap.handlers.csv.egg-info/not-zip-safe
+src/pydap.handlers.csv.egg-info/top_level.txt
+src/pydap/handlers/__init__.py
+src/pydap/handlers/csv/__init__.py
