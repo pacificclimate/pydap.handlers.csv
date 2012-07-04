@@ -30,7 +30,7 @@ from pydap.exceptions import OpenFileError
 #        seq = dataset['sequence'] = SequenceType('sequence')
 
 
-class CVSSequence(SequenceType):
+class CSVSequence(SequenceType):
     """
     A `SequenceType` that reads data from a CSV file.
 
@@ -109,6 +109,6 @@ def const(s):
 
 
 if __name__ == '__main__':
-    s = CVSSequence('s', '136.csv', ('prec', 'temp', 'wind_dir', 'unknown', 'time', 'wind_speed'))
+    s = CSVSequence('s', '136.csv', ('prec', 'temp', 'wind_dir', 'unknown', 'time', 'wind_speed'))
     for rec in s['temp', 'prec']:
         print rec
