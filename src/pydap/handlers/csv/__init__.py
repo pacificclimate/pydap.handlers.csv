@@ -5,6 +5,8 @@ import operator
 
 #from pydap.handlers.lib import BaseHandler
 from pydap.model import *
+from pydap.lib import encode
+from pydap.handlers.lib import ConstraintExpression
 from pydap.exceptions import OpenFileError
 
 
@@ -88,6 +90,22 @@ class CSVSequence(SequenceType):
             out[child.name] = child.clone()
             
         return out
+        
+        
+class CSVBaseType(BaseType):
+    """
+    A BaseType that returns lazy comparisons.
+    
+    Comparisons return a `ConstraintExpression` object, so multiple comparisons
+    can be saved and evaluated only once.
+    
+    """
+    def __eq__(self, other): return ConstraintExpression('%s=%s' % (self.id, encode(other)))
+    def __ne__(self, other): return ConstraintExpression('%s!=%s' % (self.id, encode(other)))
+    def __ge__(self, other): return ConstraintExpression('%s>=%s' % (self.id, encode(other)))
+    def __le__(self, other): return ConstraintExpression('%s<=%s' % (self.id, encode(other)))
+    def __gt__(self, other): return ConstraintExpression('%s>%s' % (self.id, encode(other)))
+    def __lt__(self, other): return ConstraintExpression('%s<%s' % (self.id, encode(other)))
 
 
 def const(s):
