@@ -5,36 +5,72 @@ import operator
 import re
 import ast
 
-#from pydap.handlers.lib import BaseHandler
+from pydap.handlers.lib import BaseHandler
 from pydap.model import *
-from pydap.lib import encode, combine_slices
+from pydap.lib import encode, combine_slices, fix_slice
 from pydap.handlers.lib import ConstraintExpression
 from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
 
-#class CSVHandler(BaseHandler):
-#    def __init__(self, filepath):
-#        self.filepath = filepath
-#
-#    def parse(self, ce):
-#        """
-#        Parse the constraint expression and return a dataset.
-#
-#        """
-#        try:
-#            fp = open(self.filepath, 'Ur')
-#            reader = csv.reader(fp)
-#        except Exception, e:
-#            message = 'Unable to open file %s: %s' % (self.filepath, e)
-#            raise OpenFileError(message)
-#
-#        # create the dataset with a sequence
-#        name = os.path.split(self.filepath)[1]
-#        dataset = DatasetType(name)
-#        seq = dataset['sequence'] = SequenceType('sequence')
+class CSVHandler(BaseHandler):
+    def __init__(self, filepath):
+        self.filepath = filepath
+
+        try: 
+            fp = open(filepath, 'Ur')
+        except Exception, e:
+            message = 'Unable to open file %s: %s' % (self.filepath, e)
+            raise OpenFileError(message)
+
+        reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
+        self.cols = reader.next()
+        fp.close()
+
+    def parse(self, projection, selection):
+        """
+        Parse the constraint expression and return a dataset.
+
+        """
+        # create the dataset with a sequence
+        name = os.path.split(self.filepath)[1]
+        dataset = DatasetType(name)
+        seq = dataset['sequence'] = CSVSequenceType('sequence', self.filepath)
+
+        # apply selection
+        seq.selection.extend(selection)
+
+        # by default, return all columns
+        cols = self.cols
+
+        # apply projection
+        if projection:
+            # fix shorthand notation in projection; some clients will request
+            # `child` instead of `sequence.child`.
+            for var in projection:
+                if len(var) == 1 and var[0][0] != seq.name:
+                    token.insert(0, (seq.name, ()))
+
+            # get all slices and apply the first one, since they should be equal
+            slices = [ fix_slice(var[0][1], (None,)) for var in projection ]
+            seq.slice = slices[0]
+
+            # check that all slices are equal
+            if any(slice_ != seq.slice for slice_ in slices[1:]):
+                raise ConstraintExpressionError('Slices are not unique!')
+
+            # if the sequence has not been directly requested, return only
+            # those variables that were requested
+            if all(len(var) == 2 for var in projection):
+                cols = [ var[1][0] for var in projection ]
+
+        # add variables
+        for col in cols:
+            dataset['sequence'][col] = CSVBaseType(col)
+
+        return dataset
 
 
-class CSVSequence(SequenceType):
+class CSVSequenceType(SequenceType):
     """
     A `SequenceType` that reads data from a CSV file.
 
@@ -56,7 +92,7 @@ class CSVSequence(SequenceType):
 
     Iteraring over the sequence returns data:
 
-        >>> seq = CSVSequence('example', 'test.csv')
+        >>> seq = CSVSequenceType('example', 'test.csv')
         >>> seq['index'] = CSVBaseType('index')
         >>> seq['temperature'] = CSVBaseType('temperature')
         >>> seq['site'] = CSVBaseType('site')
@@ -100,6 +136,12 @@ class CSVSequence(SequenceType):
         Platinum_St
         Kodiak_Trail
 
+        >>> for line in seq['site', 'temperature'][ seq.index > 10 ]:
+        ...     print line
+        ['Blacktail_Loop', 13.1]
+        ['Platinum_St', 13.3]
+        ['Kodiak_Trail', 12.1]
+
     Or slice it:
 
         >>> for line in seq[::2]:
@@ -121,7 +163,7 @@ class CSVSequence(SequenceType):
     def __init__(self, name, filepath, attributes=None, **kwargs):
         StructureType.__init__(self, name, attributes, **kwargs)
         self.filepath = filepath
-        self.queries = []
+        self.selection = []
         self.slice = (slice(None),)
         self.sequence_level = 1
 
@@ -140,7 +182,7 @@ class CSVSequence(SequenceType):
         # Return a copy with the added constraints.
         elif isinstance(key, ConstraintExpression):
             out = self.clone()
-            out.queries.extend( str(key).split('&') )
+            out.selection.extend( str(key).split('&') )
 
         # Slice data.
         else:
@@ -159,12 +201,12 @@ class CSVSequence(SequenceType):
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-        vars_ = reader.next()
-        indexes = [ vars_.index(col) for col in self.keys() ]
+        cols = reader.next()
+        indexes = [ cols.index(col) for col in self.keys() ]
 
         # prepare data
         data = itertools.ifilter(len, reader)  
-        data = itertools.ifilter(build_filter(self.queries, vars_), data)
+        data = itertools.ifilter(build_filter(self.selection, cols), data)
         data = itertools.imap(lambda line: [ line[i] for i in indexes ], data)
         data = itertools.islice(data, self.slice[0].start, self.slice[0].stop, self.slice[0].step)
 
@@ -178,7 +220,7 @@ class CSVSequence(SequenceType):
         out.id = self.id
         out.sequence_level = self.sequence_level
 
-        out.queries = self.queries[:]
+        out.selection = self.selection[:]
         
         # Clone children too.
         for child in self.children():
@@ -203,28 +245,32 @@ class CSVBaseType(BaseType):
     def __lt__(self, other): return ConstraintExpression('%s<%s' % (self.id, encode(other)))
 
     def __getitem__(self, key):
+        """
+        Lazy slice of the data.
+
+        """
         if isinstance(key, int):
             key = slice(key, key+1)
         return itertools.islice(self.data, key.start, key.stop, key.step)
 
 
-def build_filter(queries, vars_):
+def build_filter(selection, cols):
     filters = [ bool ]
 
-    for query in queries:
-        id1, op, id2 = re.split('(<=|>=|!=|=~|>|<|=)', query, 1)
+    for expression in selection:
+        id1, op, id2 = re.split('(<=|>=|!=|=~|>|<|=)', expression, 1)
 
         # a should be a variable in the children
         name1 = id1.split('.')[-1]
-        if name1 in vars_:
-            a = operator.itemgetter(vars_.index(name1))
+        if name1 in cols:
+            a = operator.itemgetter(cols.index(name1))
         else:
-            raise ConstraintExpressionError('Invalid constraint expression: "%s" ("%s" is not a valid variable)' % (query, id1))
+            raise ConstraintExpressionError('Invalid constraint expression: "%s" ("%s" is not a valid variable)' % (expression, id1))
 
         # b could be a variable or constant
         name2 = id2.split('.')[-1]
-        if name2 in vars_:
-            b = operator.itemgetter(vars_.index(name2))
+        if name2 in cols:
+            b = operator.itemgetter(cols.index(name2))
         else:
             b = lambda line, name2=name2: ast.literal_eval(name2)
 
@@ -250,4 +296,10 @@ def _test():
 
 
 if __name__ == "__main__":
+    import sys
+    from paste.httpserver import serve
+
     _test()
+
+    application = CSVHandler(sys.argv[1])
+    serve(application, port=8001)
