@@ -7,7 +7,7 @@ import ast
 
 #from pydap.handlers.lib import BaseHandler
 from pydap.model import *
-from pydap.lib import encode
+from pydap.lib import encode, combine_slices
 from pydap.handlers.lib import ConstraintExpression
 from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
@@ -46,19 +46,21 @@ class CSVSequence(SequenceType):
         ... (12, 13.3, 'Platinum_St'),
         ... (13, 12.1, 'Kodiak_Trail')]
 
-        >>> from StringIO import StringIO
         >>> import csv
-        >>> buf = StringIO()
-        >>> writer = csv.writer(buf, quoting=csv.QUOTE_NONNUMERIC)
+        >>> f = open('test.csv', 'w')
+        >>> writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
         >>> writer.writerow(['index', 'temperature', 'site'])
         >>> for row in data:
         ...     writer.writerow(row)
-        >>> buf.seek(0)
+        >>> f.close()
 
-        >>> seq = CSVSequence('example', buf)
+    Iteraring over the sequence returns data:
+
+        >>> seq = CSVSequence('example', 'test.csv')
         >>> seq['index'] = CSVBaseType('index')
         >>> seq['temperature'] = CSVBaseType('temperature')
         >>> seq['site'] = CSVBaseType('site')
+
         >>> for line in seq:
         ...     print line
         [10.0, 15.2, 'Diamond_St']
@@ -66,14 +68,61 @@ class CSVSequence(SequenceType):
         [12.0, 13.3, 'Platinum_St']
         [13.0, 12.1, 'Kodiak_Trail']
 
+    The order of the variables can be changed:
+
         >>> for line in seq['temperature', 'site', 'index']:
         ...     print line
+        [15.2, 'Diamond_St', 10.0]
+        [13.1, 'Blacktail_Loop', 11.0]
+        [13.3, 'Platinum_St', 12.0]
+        [12.1, 'Kodiak_Trail', 13.0]
+
+    We can iterate over children:
+
+        >>> for line in seq['temperature']:
+        ...     print line
+        15.2
+        13.1
+        13.3
+        12.1
+
+    We can filter the data:
+
+        >>> for line in seq[ seq.index > 10 ]:
+        ...     print line
+        [11.0, 13.1, 'Blacktail_Loop']
+        [12.0, 13.3, 'Platinum_St']
+        [13.0, 12.1, 'Kodiak_Trail']
+
+        >>> for line in seq[ seq.index > 10 ]['site']:
+        ...     print line
+        Blacktail_Loop
+        Platinum_St
+        Kodiak_Trail
+
+    Or slice it:
+
+        >>> for line in seq[::2]:
+        ...     print line
+        [10.0, 15.2, 'Diamond_St']
+        [12.0, 13.3, 'Platinum_St']
+
+        >>> for line in seq[ seq.index > 10 ][::2]['site']:
+        ...     print line
+        Blacktail_Loop
+        Kodiak_Trail
+
+        >>> for line in seq[ seq.index > 10 ]['site'][::2]:
+        ...     print line
+        Blacktail_Loop
+        Kodiak_Trail
 
     """
     def __init__(self, name, filepath, attributes=None, **kwargs):
         StructureType.__init__(self, name, attributes, **kwargs)
         self.filepath = filepath
         self.queries = []
+        self.slice = (slice(None),)
         self.sequence_level = 1
 
     def __getitem__(self, key):
@@ -82,30 +131,32 @@ class CSVSequence(SequenceType):
             out = StructureType.__getitem__(self, key)
             index = self.keys().index(key)
             out.data = itertools.imap(operator.itemgetter(index), self)
-            return out
 
         # Return a new `SequenceType`, with requested columns.
         elif isinstance(key, tuple):
             out = self.clone()
-            for name in key:
-                out[name] = StructureType.__getitem__(self, name).clone()
-            return out
+            out._keys = list(key)
 
         # Return a copy with the added constraints.
         elif isinstance(key, ConstraintExpression):
             out = self.clone()
             out.queries.extend( str(key).split('&') )
-            return out
+
+        # Slice data.
+        else:
+            out = self.clone()
+            if isinstance(key, int):
+                key = slice(key, key+1)
+            out.slice = combine_slices(self.slice, (key,))
+
+        return out
 
     def __iter__(self):
-        if hasattr(self.filepath, 'seek'):
-            fp = self.filepath
-        else:
-            try:
-                fp = open(self.filepath, 'Ur')
-            except Exception, e:
-                message = 'Unable to open file %s: %s' % (self.filepath, e)
-                raise OpenFileError(message)
+        try:
+            fp = open(self.filepath, 'Ur')
+        except Exception, e:
+            message = 'Unable to open file %s: %s' % (self.filepath, e)
+            raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
         vars_ = reader.next()
@@ -115,6 +166,7 @@ class CSVSequence(SequenceType):
         data = itertools.ifilter(len, reader)  
         data = itertools.ifilter(build_filter(self.queries, vars_), data)
         data = itertools.imap(lambda line: [ line[i] for i in indexes ], data)
+        data = itertools.islice(data, self.slice[0].start, self.slice[0].stop, self.slice[0].step)
 
         for row in data:
             yield row
@@ -149,6 +201,11 @@ class CSVBaseType(BaseType):
     def __le__(self, other): return ConstraintExpression('%s<=%s' % (self.id, encode(other)))
     def __gt__(self, other): return ConstraintExpression('%s>%s' % (self.id, encode(other)))
     def __lt__(self, other): return ConstraintExpression('%s<%s' % (self.id, encode(other)))
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            key = slice(key, key+1)
+        return itertools.islice(self.data, key.start, key.stop, key.step)
 
 
 def build_filter(queries, vars_):
