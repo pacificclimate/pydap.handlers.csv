@@ -8,6 +8,8 @@ import time
 from stat import ST_MTIME
 from email.utils import formatdate
 
+import numpy as np
+
 from pydap.handlers.lib import BaseHandler
 from pydap.model import *
 from pydap.lib import encode, combine_slices, fix_slice
@@ -259,6 +261,18 @@ class CSVBaseType(BaseType):
     def __le__(self, other): return ConstraintExpression('%s<=%s' % (self.id, encode(other)))
     def __gt__(self, other): return ConstraintExpression('%s>%s' % (self.id, encode(other)))
     def __lt__(self, other): return ConstraintExpression('%s<%s' % (self.id, encode(other)))
+
+    @property
+    def dtype(self):
+        """
+        Peek first value to get type.
+
+        """
+        peek = self.data.next()
+        self.data = itertools.chain((peek,), self.data)
+        return np.array(peek).dtype
+
+    shape = ()
 
     def __getitem__(self, key):
         """
