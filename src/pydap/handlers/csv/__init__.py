@@ -4,6 +4,9 @@ import itertools
 import operator
 import re
 import ast
+import time
+from stat import ST_MTIME
+from email.utils import formatdate
 
 from pydap.handlers.lib import BaseHandler
 from pydap.model import *
@@ -14,6 +17,7 @@ from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
 class CSVHandler(BaseHandler):
     def __init__(self, filepath):
+        BaseHandler.__init__(self)
         self.filepath = filepath
 
         try: 
@@ -25,6 +29,9 @@ class CSVHandler(BaseHandler):
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
         self.cols = reader.next()
         fp.close()
+
+        self.additional_headers.append(
+                ('Last-modified', (formatdate(time.mktime(time.localtime(os.stat(self.filepath)[ST_MTIME]))))))
 
     def parse(self, projection, selection):
         """
@@ -193,6 +200,12 @@ class CSVSequenceType(SequenceType):
 
         return out
 
+    def __setitem__(self, key, item):
+        # set data on the child
+        SequenceType.__setitem__(self, key, item)
+        index = self.keys().index(key)
+        item.data = itertools.imap(operator.itemgetter(index), self)
+
     def __iter__(self):
         try:
             fp = open(self.filepath, 'Ur')
@@ -214,6 +227,9 @@ class CSVSequenceType(SequenceType):
             yield row
 
         fp.close()
+
+    # data points to the csv iterator
+    data = property(__iter__)
 
     def clone(self):
         out = self.__class__(self.name, self.filepath, self.attributes.copy())
