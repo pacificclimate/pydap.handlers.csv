@@ -24,8 +24,8 @@ class CSVHandler(BaseHandler):
 
         try: 
             fp = open(filepath, 'Ur')
-        except Exception, e:
-            message = 'Unable to open file %s: %s' % (self.filepath, e)
+        except Exception, exc:
+            message = 'Unable to open file %s: %s' % (self.filepath, exc)
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
