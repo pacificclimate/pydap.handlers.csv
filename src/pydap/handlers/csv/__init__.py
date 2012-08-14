@@ -12,7 +12,7 @@ import numpy as np
 
 from pydap.handlers.lib import BaseHandler
 from pydap.model import *
-from pydap.lib import encode, combine_slices, fix_slice
+from pydap.lib import encode, combine_slices, fix_slice, quote
 from pydap.handlers.lib import ConstraintExpression
 from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
@@ -23,14 +23,12 @@ class CSVHandler(BaseHandler):
         self.filepath = filepath
 
         try: 
-            fp = open(filepath, 'Ur')
+            with open(filepath, 'Ur') as fp:
+                reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
+                self.cols = reader.next()
         except Exception, exc:
-            message = 'Unable to open file %s: %s' % (self.filepath, exc)
+            message = 'Unable to open file {filepath}: {exc}'.format(filepath=self.filepath, exc=exc)
             raise OpenFileError(message)
-
-        reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-        self.cols = reader.next()
-        fp.close()
 
         self.additional_headers.append(
                 ('Last-modified', (formatdate(time.mktime(time.localtime(os.stat(self.filepath)[ST_MTIME]))))))
@@ -57,7 +55,7 @@ class CSVHandler(BaseHandler):
             # `child` instead of `sequence.child`.
             for var in projection:
                 if len(var) == 1 and var[0][0] != seq.name:
-                    token.insert(0, (seq.name, ()))
+                    var.insert(0, (seq.name, ()))
 
             # get all slices and apply the first one, since they should be equal
             slices = [ fix_slice(var[0][1], (None,)) for var in projection ]
@@ -74,7 +72,7 @@ class CSVHandler(BaseHandler):
 
         # add variables
         for col in cols:
-            dataset['sequence'][col] = CSVBaseType(col)
+            seq[quote(col)] = CSVBaseType(col)
 
         return dataset
 
@@ -211,8 +209,8 @@ class CSVSequenceType(SequenceType):
     def __iter__(self):
         try:
             fp = open(self.filepath, 'Ur')
-        except Exception, e:
-            message = 'Unable to open file %s: %s' % (self.filepath, e)
+        except Exception, exc:
+            message = 'Unable to open file {filepath}: {exc}'.format(filepath=self.filepath, exc=exc)
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
@@ -295,7 +293,9 @@ def build_filter(selection, cols):
         if name1 in cols:
             a = operator.itemgetter(cols.index(name1))
         else:
-            raise ConstraintExpressionError('Invalid constraint expression: "%s" ("%s" is not a valid variable)' % (expression, id1))
+            raise ConstraintExpressionError(
+                    'Invalid constraint expression: "{expression}" ("{id}" is not a valid variable)'.format(
+                    expression=expression, id=id1))
 
         # b could be a variable or constant
         name2 = id2.split('.')[-1]
