@@ -33,8 +33,8 @@ setup(name='pydap.handlers.csv',
     include_package_data=True,
     zip_safe=False,
     install_requires=install_requires,
-    entry_points={
-        'console_scripts':
-            ['pydap.handlers.csv=pydap.handlers.csv:main']
-    }
+    entry_points="""
+        [pydap.handler]    
+        csv = pydap.handlers.csv:CSVHandler
+    """,
 )

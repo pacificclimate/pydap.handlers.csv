@@ -1,3 +1,4 @@
-[console_scripts]
-pydap.handlers.csv = pydap.handlers.csv:main
 
+        [pydap.handler]    
+        csv = pydap.handlers.csv:CSVHandler
+    

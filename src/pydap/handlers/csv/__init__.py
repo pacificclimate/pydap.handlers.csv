@@ -18,6 +18,9 @@ from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
 
 class CSVHandler(BaseHandler):
+
+    extensions = re.compile(r"^.*\.csv$", re.IGNORECASE)
+
     def __init__(self, filepath):
         BaseHandler.__init__(self)
         self.filepath = filepath
