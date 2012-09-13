@@ -12,5 +12,3 @@ src/pydap.handlers.csv.egg-info/not-zip-safe
 src/pydap.handlers.csv.egg-info/top_level.txt
 src/pydap/handlers/__init__.py
 src/pydap/handlers/csv/__init__.py
-src/pydap/handlers/csv/bench.py
-src/pydap/handlers/csv/test.py
