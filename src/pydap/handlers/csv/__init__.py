@@ -305,7 +305,7 @@ def build_filter(selection, cols):
         if name2 in cols:
             b = operator.itemgetter(cols.index(name2))
         else:
-            b = lambda line, name2=name2: ast.literal_eval(name2)
+            b = lambda line, name2=name2: ast.literal_eval(id2)
 
         op = {
                 '<' : operator.lt,
