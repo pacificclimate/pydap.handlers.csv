@@ -23,66 +23,34 @@ class CSVHandler(BaseHandler):
 
     def __init__(self, filepath):
         BaseHandler.__init__(self)
-        self.filepath = filepath
 
         try: 
             with open(filepath, 'Ur') as fp:
                 reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-                self.cols = reader.next()
+                vars_ = reader.next()
         except Exception, exc:
-            message = 'Unable to open file {filepath}: {exc}'.format(filepath=self.filepath, exc=exc)
+            message = 'Unable to open file {filepath}: {exc}'.format(filepath=filepath, exc=exc)
             raise OpenFileError(message)
 
         self.additional_headers.append(
-                ('Last-modified', (formatdate(time.mktime(time.localtime(os.stat(self.filepath)[ST_MTIME]))))))
+                ('Last-modified', (formatdate(time.mktime(time.localtime(os.stat(filepath)[ST_MTIME]))))))
 
-    def parse(self, projection, selection):
-        """
-        Parse the constraint expression and return a dataset.
+        # build dataset
+        name = os.path.split(filepath)[1]
+        self.dataset = DatasetType(name)
 
-        """
-        # create the dataset with a sequence
-        name = os.path.split(self.filepath)[1]
-        dataset = DatasetType(name)
-        seq = dataset['sequence'] = CSVSequenceType('sequence', self.filepath)
+        # add sequence and children for each column
+        seq = self.dataset['sequence'] = SequenceType('sequence')
+        for var in vars_:
+            seq[var] = BaseType(var)
 
-        # apply selection
-        seq.selection.extend(selection)
-
-        # by default, return all columns
-        cols = self.cols
-
-        # apply projection
-        if projection:
-            # fix shorthand notation in projection; some clients will request
-            # `child` instead of `sequence.child`.
-            for var in projection:
-                if len(var) == 1 and var[0][0] != seq.name:
-                    var.insert(0, (seq.name, ()))
-
-            # get all slices and apply the first one, since they should be equal
-            slices = [ fix_slice(var[0][1], (None,)) for var in projection ]
-            seq.slice = slices[0]
-
-            # check that all slices are equal
-            if any(slice_ != seq.slice for slice_ in slices[1:]):
-                raise ConstraintExpressionError('Slices are not unique!')
-
-            # if the sequence has not been directly requested, return only
-            # those variables that were requested
-            if all(len(var) == 2 for var in projection):
-                cols = [ var[1][0] for var in projection ]
-
-        # add variables
-        for col in cols:
-            seq[quote(col)] = CSVBaseType(col)
-
-        return dataset
+        # set the data
+        seq.data = CSVData(filepath, seq.id, tuple(vars_))
 
 
-class CSVSequenceType(SequenceType):
+class CSVData(object):
     """
-    A `SequenceType` that reads data from a CSV file.
+    Emulate a Numpy structured array using CSV files.
 
     Here's a standard dataset for testing sequential data:
 
@@ -102,10 +70,11 @@ class CSVSequenceType(SequenceType):
 
     Iteraring over the sequence returns data:
 
-        >>> seq = CSVSequenceType('example', 'test.csv')
-        >>> seq['index'] = CSVBaseType('index')
-        >>> seq['temperature'] = CSVBaseType('temperature')
-        >>> seq['site'] = CSVBaseType('site')
+        >>> seq = SequenceType('example')
+        >>> seq['index'] = BaseType('index')
+        >>> seq['temperature'] = BaseType('temperature')
+        >>> seq['site'] = BaseType('site')
+        >>> seq.data = CSVData('test.csv', seq.id, ('index', 'temperature', 'site'))
 
         >>> for line in seq:
         ...     print line
@@ -170,44 +139,26 @@ class CSVSequenceType(SequenceType):
         Kodiak_Trail
 
     """
-    def __init__(self, name, filepath, attributes=None, **kwargs):
-        StructureType.__init__(self, name, attributes, **kwargs)
+    shape = ()
+
+    def __init__(self, filepath, id, cols, selection=None, slice_=None):
         self.filepath = filepath
-        self.selection = []
-        self.slice = (slice(None),)
-        self.sequence_level = 1
+        self.id = id
+        self.cols = cols
+        self.selection = selection or []
+        self.slice = slice_ or (slice(None),)
 
-    def __getitem__(self, key):
-        # Return a child with corresponding data.
-        if isinstance(key, basestring):
-            out = StructureType.__getitem__(self, key)
-            index = self.keys().index(key)
-            out.data = itertools.imap(operator.itemgetter(index), self)
-
-        # Return a new `SequenceType`, with requested columns.
-        elif isinstance(key, tuple):
-            out = self.clone()
-            out._keys = list(key)
-
-        # Return a copy with the added constraints.
-        elif isinstance(key, ConstraintExpression):
-            out = self.clone()
-            out.selection.extend( str(key).split('&') )
-
-        # Slice data.
+    def __str__(self):
+        if isinstance(self.cols, tuple):
+            cols = ','.join(self.cols)
         else:
-            out = self.clone()
-            if isinstance(key, int):
-                key = slice(key, key+1)
-            out.slice = combine_slices(self.slice, (key,))
+            cols = self.cols
+        return self.id + '@' + self.filepath + '/' + cols + '/' + '&'.join(self.selection) + '/' + str(self.slice[0])
 
-        return out
-
-    def __setitem__(self, key, item):
-        # set data on the child
-        SequenceType.__setitem__(self, key, item)
-        index = self.keys().index(key)
-        item.data = itertools.imap(operator.itemgetter(index), self)
+    @property
+    def dtype(self):
+        peek = iter(self).next()
+        return np.array(peek).dtype
 
     def __iter__(self):
         try:
@@ -217,45 +168,57 @@ class CSVSequenceType(SequenceType):
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-        cols = reader.next()
-        indexes = [ cols.index(col) for col in self.keys() ]
+        vars_ = reader.next()
+
+        if isinstance(self.cols, tuple):
+            cols = self.cols
+        else:
+            cols = (self.cols,)
+        indexes = [ vars_.index(col) for col in cols ]
 
         # prepare data
         data = itertools.ifilter(len, reader)  
-        data = itertools.ifilter(build_filter(self.selection, cols), data)
+        data = itertools.ifilter(build_filter(self.selection, vars_), data)
         data = itertools.imap(lambda line: [ line[i] for i in indexes ], data)
         data = itertools.islice(data, self.slice[0].start, self.slice[0].stop, self.slice[0].step)
+
+        # return data from a children BaseType, not a Sequence
+        if not isinstance(self.cols, tuple):
+            data = itertools.imap(operator.itemgetter(0), data)
 
         for row in data:
             yield row
 
         fp.close()
 
-    # data points to the csv iterator
-    data = property(__iter__)
+    def __getitem__(self, key):
+        out = self.clone()
+
+        # return the data for a children
+        if isinstance(key, basestring):
+            out.id = '{id}.{child}'.format(id=self.id, child=key)
+            out.cols = key
+
+        # return a new object with requested columns
+        elif isinstance(key, list):
+            out.cols = tuple(key)
+
+        # return a copy with the added constraints
+        elif isinstance(key, ConstraintExpression):
+            out.selection.extend( str(key).split('&') )
+
+        # slice data
+        else:
+            if isinstance(key, int):
+                key = slice(key, key+1)
+            out.slice = combine_slices(self.slice, (key,))
+
+        return out
 
     def clone(self):
-        out = self.__class__(self.name, self.filepath, self.attributes.copy())
-        out.id = self.id
-        out.sequence_level = self.sequence_level
+        return self.__class__(self.filepath, self.id, self.cols[:],
+                self.selection[:], self.slice[:])
 
-        out.selection = self.selection[:]
-        
-        # Clone children too.
-        for child in self.children():
-            out[child.name] = child.clone()
-            
-        return out
-        
-        
-class CSVBaseType(BaseType):
-    """
-    A BaseType that returns lazy comparisons.
-    
-    Comparisons return a `ConstraintExpression` object, so multiple comparisons
-    can be saved and evaluated only once.
-    
-    """
     def __eq__(self, other): return ConstraintExpression('%s=%s' % (self.id, encode(other)))
     def __ne__(self, other): return ConstraintExpression('%s!=%s' % (self.id, encode(other)))
     def __ge__(self, other): return ConstraintExpression('%s>=%s' % (self.id, encode(other)))
@@ -263,28 +226,7 @@ class CSVBaseType(BaseType):
     def __gt__(self, other): return ConstraintExpression('%s>%s' % (self.id, encode(other)))
     def __lt__(self, other): return ConstraintExpression('%s<%s' % (self.id, encode(other)))
 
-    @property
-    def dtype(self):
-        """
-        Peek first value to get type.
-
-        """
-        peek = self.data.next()
-        self.data = itertools.chain((peek,), self.data)
-        return np.array(peek).dtype
-
-    shape = ()
-
-    def __getitem__(self, key):
-        """
-        Lazy slice of the data.
-
-        """
-        if isinstance(key, int):
-            key = slice(key, key+1)
-        return itertools.islice(self.data, key.start, key.stop, key.step)
-
-
+        
 def build_filter(selection, cols):
     filters = [ bool ]
 
@@ -305,7 +247,7 @@ def build_filter(selection, cols):
         if name2 in cols:
             b = operator.itemgetter(cols.index(name2))
         else:
-            b = lambda line, name2=name2: ast.literal_eval(id2)
+            b = lambda line, id2=id2: ast.literal_eval(id2)
 
         op = {
                 '<' : operator.lt,
@@ -330,9 +272,9 @@ def _test():
 
 if __name__ == "__main__":
     import sys
-    from paste.httpserver import serve
+    from werkzeug.serving import run_simple
 
     _test()
 
     application = CSVHandler(sys.argv[1])
-    serve(application, port=8001)
+    run_simple('localhost', 8001, application, use_reloader=True)
