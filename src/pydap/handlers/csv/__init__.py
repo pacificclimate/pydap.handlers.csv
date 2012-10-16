@@ -27,7 +27,7 @@ class CSVHandler(BaseHandler):
         try: 
             with open(filepath, 'Ur') as fp:
                 reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-                vars_ = reader.next()
+                vars = reader.next()
         except Exception, exc:
             message = 'Unable to open file {filepath}: {exc}'.format(filepath=filepath, exc=exc)
             raise OpenFileError(message)
@@ -41,11 +41,11 @@ class CSVHandler(BaseHandler):
 
         # add sequence and children for each column
         seq = self.dataset['sequence'] = SequenceType('sequence')
-        for var in vars_:
+        for var in vars:
             seq[var] = BaseType(var)
 
         # set the data
-        seq.data = CSVData(filepath, seq.id, tuple(vars_))
+        seq.data = CSVData(filepath, seq.id, tuple(vars))
 
 
 class CSVData(object):
@@ -168,17 +168,17 @@ class CSVData(object):
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-        vars_ = reader.next()
+        vars = reader.next()
 
         if isinstance(self.cols, tuple):
             cols = self.cols
         else:
             cols = (self.cols,)
-        indexes = [ vars_.index(col) for col in cols ]
+        indexes = [ vars.index(col) for col in cols ]
 
         # prepare data
         data = itertools.ifilter(len, reader)  
-        data = itertools.ifilter(build_filter(self.selection, vars_), data)
+        data = itertools.ifilter(build_filter(self.selection, vars), data)
         data = itertools.imap(lambda line: [ line[i] for i in indexes ], data)
         data = itertools.islice(data, self.slice[0].start, self.slice[0].stop, self.slice[0].step)
 
