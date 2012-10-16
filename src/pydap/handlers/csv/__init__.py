@@ -12,7 +12,7 @@ import numpy as np
 
 from pydap.handlers.lib import BaseHandler
 from pydap.model import *
-from pydap.lib import encode, combine_slices, fix_slice, quote
+from pydap.lib import encode, combine_slices
 from pydap.handlers.lib import ConstraintExpression
 from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
@@ -147,13 +147,6 @@ class CSVData(object):
         self.cols = cols
         self.selection = selection or []
         self.slice = slice_ or (slice(None),)
-
-    def __str__(self):
-        if isinstance(self.cols, tuple):
-            cols = ','.join(self.cols)
-        else:
-            cols = self.cols
-        return self.id + '@' + self.filepath + '/' + cols + '/' + '&'.join(self.selection) + '/' + str(self.slice[0])
 
     @property
     def dtype(self):
