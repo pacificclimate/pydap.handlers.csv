@@ -10,10 +10,9 @@ from email.utils import formatdate
 
 import numpy as np
 
-from pydap.handlers.lib import BaseHandler
+from pydap.handlers.lib import BaseHandler, ConstraintExpression
 from pydap.model import *
 from pydap.lib import encode, combine_slices
-from pydap.handlers.lib import ConstraintExpression
 from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
 
