@@ -12,7 +12,7 @@ import numpy as np
 
 from pydap.handlers.lib import BaseHandler, ConstraintExpression
 from pydap.model import *
-from pydap.lib import encode, combine_slices
+from pydap.lib import encode, combine_slices, quote
 from pydap.exceptions import OpenFileError, ConstraintExpressionError
 
 
@@ -160,7 +160,7 @@ class CSVData(object):
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-        vars = reader.next()
+        vars = [quote(var) for var in reader.next()]
 
         if isinstance(self.cols, tuple):
             cols = self.cols
