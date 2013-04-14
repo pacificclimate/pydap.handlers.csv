@@ -1,19 +1,14 @@
 import os
 import csv
-import itertools
-import operator
 import re
-import ast
 import time
 from stat import ST_MTIME
 from email.utils import formatdate
 
-import numpy as np
-
-from pydap.handlers.lib import BaseHandler, ConstraintExpression
+from pydap.handlers.lib import BaseHandler, IterData, build_filter
 from pydap.model import *
-from pydap.lib import encode, combine_slices, quote
-from pydap.exceptions import OpenFileError, ConstraintExpressionError
+from pydap.lib import quote
+from pydap.exceptions import OpenFileError
 
 
 class CSVHandler(BaseHandler):
@@ -44,10 +39,10 @@ class CSVHandler(BaseHandler):
             seq[var] = BaseType(var)
 
         # set the data
-        seq.data = CSVData(filepath, seq.id, tuple(vars))
+        seq.data = CSVData(filepath, seq.id, seq.keys())
 
 
-class CSVData(object):
+class CSVData(IterData):
     """
     Emulate a Numpy structured array using CSV files.
 
@@ -138,21 +133,11 @@ class CSVData(object):
         Kodiak_Trail
 
     """
-    shape = ()
-
-    def __init__(self, filepath, id, cols, selection=None, slice_=None):
+    def __init__(self, filepath, id, vars, cols=None, selection=None, slice_=None):
+        super(CSVData, self).__init__(id, vars, cols, selection, slice_)
         self.filepath = filepath
-        self.id = id
-        self.cols = cols
-        self.selection = selection or []
-        self.slice = slice_ or (slice(None),)
 
-    @property
-    def dtype(self):
-        peek = iter(self).next()
-        return np.array(peek).dtype
-
-    def __iter__(self):
+    def gen(self):
         try:
             fp = open(self.filepath, 'Ur')
         except Exception, exc:
@@ -160,103 +145,16 @@ class CSVData(object):
             raise OpenFileError(message)
 
         reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
-        vars = [quote(var) for var in reader.next()]
-
-        if isinstance(self.cols, tuple):
-            cols = self.cols
-        else:
-            cols = (self.cols,)
-        indexes = [ vars.index(col) for col in cols ]
-
-        # prepare data
-        data = itertools.ifilter(len, reader)  
-        data = itertools.ifilter(build_filter(self.selection, vars), data)
-        data = itertools.imap(lambda line: [ line[i] for i in indexes ], data)
-        data = itertools.islice(data, self.slice[0].start, self.slice[0].stop, self.slice[0].step)
-
-        # return data from a children BaseType, not a Sequence
-        if not isinstance(self.cols, tuple):
-            data = itertools.imap(operator.itemgetter(0), data)
-
-        for row in data:
+        reader.next()  # consume var names
+        for row in reader:
             yield row
-
         fp.close()
 
-    def __getitem__(self, key):
-        out = self.clone()
-
-        # return the data for a children
-        if isinstance(key, basestring):
-            out.id = '{id}.{child}'.format(id=self.id, child=key)
-            out.cols = key
-
-        # return a new object with requested columns
-        elif isinstance(key, list):
-            out.cols = tuple(key)
-
-        # return a copy with the added constraints
-        elif isinstance(key, ConstraintExpression):
-            out.selection.extend( str(key).split('&') )
-
-        # slice data
-        else:
-            if isinstance(key, int):
-                key = slice(key, key+1)
-            out.slice = combine_slices(self.slice, (key,))
-
-        return out
-
     def clone(self):
-        return self.__class__(self.filepath, self.id, self.cols[:],
-                self.selection[:], self.slice[:])
-
-    def __eq__(self, other): return ConstraintExpression('%s=%s' % (self.id, encode(other)))
-    def __ne__(self, other): return ConstraintExpression('%s!=%s' % (self.id, encode(other)))
-    def __ge__(self, other): return ConstraintExpression('%s>=%s' % (self.id, encode(other)))
-    def __le__(self, other): return ConstraintExpression('%s<=%s' % (self.id, encode(other)))
-    def __gt__(self, other): return ConstraintExpression('%s>%s' % (self.id, encode(other)))
-    def __lt__(self, other): return ConstraintExpression('%s<%s' % (self.id, encode(other)))
+        return self.__class__(self.filepath, self.id, self.vars[:], 
+            self.cols[:], self.selection[:], self.slice[:])
 
         
-def build_filter(selection, cols):
-    filters = [ bool ]
-
-    for expression in selection:
-        id1, op, id2 = re.split('(<=|>=|!=|=~|>|<|=)', expression, 1)
-
-        # a should be a variable in the children
-        name1 = id1.split('.')[-1]
-        if name1 in cols:
-            a = operator.itemgetter(cols.index(name1))
-        else:
-            raise ConstraintExpressionError(
-                    'Invalid constraint expression: "{expression}" ("{id}" is not a valid variable)'.format(
-                    expression=expression, id=id1))
-
-        # b could be a variable or constant
-        name2 = id2.split('.')[-1]
-        if name2 in cols:
-            b = operator.itemgetter(cols.index(name2))
-        else:
-            b = lambda line, id2=id2: ast.literal_eval(id2)
-
-        op = {
-                '<' : operator.lt,
-                '>' : operator.gt,
-                '!=': operator.ne,
-                '=' : operator.eq,
-                '>=': operator.ge,
-                '<=': operator.le,
-                '=~': lambda a, b: re.match(b, a),
-        }[op]
-
-        filter_ = lambda line, op=op, a=a, b=b: op(a(line), b(line))
-        filters.append(filter_)
-
-    return lambda line: reduce(lambda x, y: x and y, [f(line) for f in filters])
-
-
 def _test():
     import doctest
     doctest.testmod()
