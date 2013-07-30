@@ -6,12 +6,10 @@ README = open(os.path.join(here, 'README.rst')).read()
 NEWS = open(os.path.join(here, 'NEWS.txt')).read()
 
 
-version = '0.3'
+version = '0.3dev'
 
 install_requires = [
-    # List your project dependencies here.
-    # For more details, see:
-    # http://packages.python.org/distribute/setuptools.html#declaring-dependencies
+    'Pydap==3.2.1dev'
 ]
 
 
@@ -33,6 +31,7 @@ setup(name='pydap.handlers.csv',
     include_package_data=True,
     zip_safe=False,
     install_requires=install_requires,
+    dependency_links = ['hg+ssh://medusa.pcic.uvic.ca//home/data/projects/comp_support/software/Pydap-3.2@046152c9abf5#egg=Pydap-3.2.1dev'],
     entry_points="""
         [pydap.handler]    
         csv = pydap.handlers.csv:CSVHandler
