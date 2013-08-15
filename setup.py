@@ -6,10 +6,10 @@ README = open(os.path.join(here, 'README.rst')).read()
 NEWS = open(os.path.join(here, 'NEWS.txt')).read()
 
 
-version = '0.3dev'
+version = '0.3'
 
 install_requires = [
-    'Pydap==3.2.1dev'
+    'Pydap ==3.2.1'
 ]
 
 

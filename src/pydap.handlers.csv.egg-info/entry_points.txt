@@ -1,4 +1,0 @@
-
-        [pydap.handler]    
-        csv = pydap.handlers.csv:CSVHandler
-    
