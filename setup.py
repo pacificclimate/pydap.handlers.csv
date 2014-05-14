@@ -31,7 +31,7 @@ setup(name='pydap.handlers.csv',
     include_package_data=True,
     zip_safe=False,
     install_requires=install_requires,
-    dependency_links = ['hg+ssh://medusa.pcic.uvic.ca//home/data/projects/comp_support/software/Pydap-3.2@046152c9abf5#egg=Pydap-3.2.1dev'],
+    dependency_links = ['https://github.com/pacificclimate/pydap-pdp/tarball/master#egg=Pydap-3.2.2'],
     entry_points="""
         [pydap.handler]    
         csv = pydap.handlers.csv:CSVHandler
