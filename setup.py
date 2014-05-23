@@ -9,7 +9,7 @@ NEWS = open(os.path.join(here, 'NEWS.txt')).read()
 version = '0.3'
 
 install_requires = [
-    'Pydap >=3.2.1'
+    'pydap_pdp >=3.2.1'
 ]
 
 
@@ -31,7 +31,6 @@ setup(name='pydap.handlers.csv',
     include_package_data=True,
     zip_safe=False,
     install_requires=install_requires,
-    dependency_links = ['https://github.com/pacificclimate/pydap-pdp/tarball/master#egg=Pydap-3.2.2'],
     entry_points="""
         [pydap.handler]    
         csv = pydap.handlers.csv:CSVHandler
