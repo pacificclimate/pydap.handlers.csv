@@ -6,10 +6,10 @@ README = open(os.path.join(here, 'README.rst')).read()
 NEWS = open(os.path.join(here, 'NEWS.txt')).read()
 
 
-version = '0.3'
+version = '0.4.0'
 
 install_requires = [
-    'pydap_pdp >=3.2.1'
+    'Pydap'
 ]
 
 
@@ -18,7 +18,8 @@ setup(name='pydap.handlers.csv',
     description="A handler that allows Pydap to server CSV files.",
     long_description=README + '\n\n' + NEWS,
     classifiers=[
-      # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
+        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 3"
     ],
     keywords='csv opendap pydap dap data access',
     author='Roberto De Almeida',

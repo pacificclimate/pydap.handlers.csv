@@ -22,7 +22,7 @@ class CSVHandler(BaseHandler):
             with open(filepath, 'Ur') as fp:
                 reader = csv.reader(fp, quoting=csv.QUOTE_NONNUMERIC)
                 vars = reader.next()
-        except Exception, exc:
+        except Exception as exc:
             message = 'Unable to open file {filepath}: {exc}'.format(filepath=filepath, exc=exc)
             raise OpenFileError(message)
 
@@ -140,7 +140,7 @@ class CSVData(IterData):
     def gen(self):
         try:
             fp = open(self.filepath, 'Ur')
-        except Exception, exc:
+        except Exception as exc:
             message = 'Unable to open file {filepath}: {exc}'.format(filepath=self.filepath, exc=exc)
             raise OpenFileError(message)
 
